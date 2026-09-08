@@ -2,6 +2,7 @@ package org.scribereel.controllers;
 
 import org.scribereel.dtos.internal.TranscriptWord;
 import org.scribereel.dtos.response.CaptionResponse;
+import org.scribereel.enums.CaptionStyle;
 import org.scribereel.services.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,11 +43,14 @@ public class CaptionController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CaptionResponse> createVideoCaption (
             @RequestParam("video") MultipartFile video,
-            @RequestParam(value = "wordsPerChunk", defaultValue = "1") int wordsPerChunk
+            @RequestParam(value = "style", defaultValue = "PUNCH") String styleId
             ) {
 
-        if (wordsPerChunk < 1) {
-            throw new IllegalArgumentException("wordsPerChunk must be at least 1");
+        CaptionStyle style;
+        try {
+            style = CaptionStyle.valueOf(styleId.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Unknown style: " + styleId);
         }
 
         // server-side validation
@@ -63,7 +67,7 @@ public class CaptionController {
 
         ffmpegService.extractAudio(inputVideoPath, audioPath);
         List<TranscriptWord> words = transcriptionService.transcribe(audioPath);
-        subtitleGeneratorService.generate(words, assPath, wordsPerChunk);
+        subtitleGeneratorService.generate(words, assPath, style);
         ffmpegService.burnSubtitles(inputVideoPath, assPath, outputVideoPath);
 
         return ResponseEntity.ok(new CaptionResponse("/api/download/" + job.jobId()));

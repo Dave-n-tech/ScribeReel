@@ -2,6 +2,7 @@ package org.scribereel.services;
 
 import org.junit.jupiter.api.Test;
 import org.scribereel.dtos.internal.TranscriptWord;
+import org.scribereel.enums.CaptionStyle;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,7 +45,7 @@ class SubtitleGeneratorServiceImplTest {
         );
 
         Path tempAssFile = Files.createTempFile("test-3word", ".ass");
-        service.generate(words, tempAssFile, 3);
+        service.generate(words, tempAssFile, CaptionStyle.CLASSIC);
 
         String content = Files.readString(tempAssFile);
         long dialogueLines = content.lines().filter(line -> line.startsWith("Dialogue:")).count();
@@ -66,7 +67,7 @@ class SubtitleGeneratorServiceImplTest {
         );
 
         Path tempAssFile = Files.createTempFile("test-silence-split", ".ass");
-        service.generate(words, tempAssFile, 3);
+        service.generate(words, tempAssFile, CaptionStyle.CLASSIC);
 
         String content = Files.readString(tempAssFile);
         long dialogueLines = content.lines().filter(line -> line.startsWith("Dialogue:")).count();
@@ -90,7 +91,7 @@ class SubtitleGeneratorServiceImplTest {
         );
 
         Path tempAssFile = Files.createTempFile("test-cap", ".ass");
-        service.generate(words, tempAssFile, 1);
+        service.generate(words, tempAssFile, CaptionStyle.PUNCH);
 
         String content = Files.readString(tempAssFile);
         // End time should be capped near 1.2s, not the full 5.0s natural duration.
@@ -99,17 +100,10 @@ class SubtitleGeneratorServiceImplTest {
     }
 
     @Test
-    void invalidWordsPerChunk_throwsIllegalArgumentException() {
-        Path tempPath = Path.of("does-not-matter.ass");
-        assertThatCode(() -> service.generate(List.of(new TranscriptWord("x", 0, 1)), tempPath, 0))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
     void emptyWordList_producesNoDialogueLines() throws IOException {
         Path tempAssFile = Files.createTempFile("test-empty", ".ass");
 
-        assertThatCode(() -> service.generate(List.of(), tempAssFile, 1))
+        assertThatCode(() -> service.generate(List.of(), tempAssFile, CaptionStyle.PUNCH))
                 .doesNotThrowAnyException();
 
         long dialogueLines = Files.readString(tempAssFile).lines()
@@ -139,5 +133,72 @@ class SubtitleGeneratorServiceImplTest {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Test
+    void differentStyles_produceDifferentAssStyleLines() throws IOException {
+        List<TranscriptWord> words = List.of(new TranscriptWord("hi", 0.0, 0.3));
+        Path punchFile = Files.createTempFile("punch", ".ass");
+        Path minimalFile = Files.createTempFile("minimal", ".ass");
+
+        service.generate(words, punchFile, CaptionStyle.PUNCH);
+        service.generate(words, minimalFile, CaptionStyle.MINIMAL);
+
+        String punchContent = Files.readString(punchFile);
+        String minimalContent = Files.readString(minimalFile);
+
+        assertThat(punchContent).contains("Arial,76");
+        assertThat(minimalContent).contains("Arial,46");
+        assertThat(punchContent).isNotEqualTo(minimalContent);
+
+        Files.deleteIfExists(punchFile);
+        Files.deleteIfExists(minimalFile);
+    }
+
+    @Test
+    void classicStyle_usesThreeWordChunking() throws IOException {
+        List<TranscriptWord> words = List.of(
+                new TranscriptWord("this", 0.0, 0.3),
+                new TranscriptWord("is", 0.3, 0.5),
+                new TranscriptWord("classic", 0.5, 0.9)
+        );
+
+        Path tempFile = Files.createTempFile("classic-chunk", ".ass");
+        service.generate(words, tempFile, CaptionStyle.CLASSIC);
+
+        long dialogueLines = Files.readString(tempFile).lines()
+                .filter(l -> l.startsWith("Dialogue:")).count();
+
+        assertThat(dialogueLines).isEqualTo(1); // no silence gaps -> one 3-word chunk
+        Files.deleteIfExists(tempFile);
+    }
+
+    @Test
+    void punchStyle_usesOneWordChunking() throws IOException {
+        List<TranscriptWord> words = List.of(
+                new TranscriptWord("this", 0.0, 0.3),
+                new TranscriptWord("is", 0.3, 0.5),
+                new TranscriptWord("punch", 0.5, 0.9)
+        );
+
+        Path tempFile = Files.createTempFile("punch-chunk", ".ass");
+        service.generate(words, tempFile, CaptionStyle.PUNCH);
+
+        long dialogueLines = Files.readString(tempFile).lines()
+                .filter(l -> l.startsWith("Dialogue:")).count();
+
+        assertThat(dialogueLines).isEqualTo(3); // one word per chunk
+        Files.deleteIfExists(tempFile);
+    }
+
+    @Test
+    void defaultOverload_usesPunchStyle() throws IOException {
+        List<TranscriptWord> words = List.of(new TranscriptWord("hi", 0.0, 0.3));
+        Path tempFile = Files.createTempFile("default", ".ass");
+
+        service.generate(words, tempFile); // no style arg
+
+        assertThat(Files.readString(tempFile)).contains("Arial,76"); // Punch's font size
+        Files.deleteIfExists(tempFile);
     }
 }

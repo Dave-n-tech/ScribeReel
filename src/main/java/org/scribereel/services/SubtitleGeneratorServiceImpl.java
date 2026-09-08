@@ -1,6 +1,7 @@
 package org.scribereel.services;
 
 import org.scribereel.dtos.internal.TranscriptWord;
+import org.scribereel.enums.CaptionStyle;
 import org.scribereel.exceptions.VideoProcessingException;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +19,7 @@ public class SubtitleGeneratorServiceImpl implements SubtitleGeneratorService {
 
     private static final double SILENCE_GAP_THRESHOLD_SECONDS = 0.5;
 
-    private static final String ASS_HEADER = """
+    private static final String ASS_HEADER_TEMPLATE = """
             [Script Info]
             ScriptType: v4.00+
             PlayResX: 1080
@@ -26,7 +27,7 @@ public class SubtitleGeneratorServiceImpl implements SubtitleGeneratorService {
 
             [V4+ Styles]
             Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, Bold, BorderStyle, Outline, Alignment, MarginV
-            Style: Default,Arial,72,&H00FFFFFF,&H00000000,1,1,3,2,120
+            %s
 
             [Events]
             Format: Layer, Start, End, Style, Text
@@ -34,18 +35,14 @@ public class SubtitleGeneratorServiceImpl implements SubtitleGeneratorService {
 
     @Override
     public void generate(List<TranscriptWord> words, Path outputAssPath) {
-        generate(words, outputAssPath, 1); // default: one word at a time
+        generate(words, outputAssPath, CaptionStyle.PUNCH); // default: one word at a time
     }
 
     @Override
-    public void generate(List<TranscriptWord> words, Path outputAssPath, int wordsPerChunk) {
-        if (wordsPerChunk < 1) {
-            throw new IllegalArgumentException("wordsPerChunk must be at least 1");
-        }
+    public void generate(List<TranscriptWord> words, Path outputAssPath, CaptionStyle style) {
+        List<List<TranscriptWord>> chunks = chunkBySilence(words, style.getWordsPerChunk());
 
-        List<List<TranscriptWord>> chunks = chunkBySilence(words, wordsPerChunk);
-
-        StringBuilder sb = new StringBuilder(ASS_HEADER);
+        StringBuilder sb = new StringBuilder(ASS_HEADER_TEMPLATE.formatted(style.toAssStyleLine()));
 
         for (List<TranscriptWord> chunk : chunks) {
             appendDialogueLine(sb, chunk);

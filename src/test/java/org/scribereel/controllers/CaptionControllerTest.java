@@ -1,7 +1,6 @@
 package org.scribereel.controllers;
 
 import org.junit.jupiter.api.Test;
-import org.scribereel.config.AppPropertiesConfig;
 import org.scribereel.dtos.internal.TranscriptWord;
 import org.scribereel.exceptions.VideoValidationException;
 import org.scribereel.services.*;
@@ -15,7 +14,6 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;

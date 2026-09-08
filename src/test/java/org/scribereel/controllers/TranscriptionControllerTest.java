@@ -1,7 +1,6 @@
 package org.scribereel.controllers;
 
 import org.junit.jupiter.api.Test;
-import org.scribereel.config.AppPropertiesConfig;
 import org.scribereel.services.FfmpegService;
 import org.scribereel.services.JobFileService;
 import org.scribereel.services.TranscriptionService;

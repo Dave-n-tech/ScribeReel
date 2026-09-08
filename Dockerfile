@@ -1,10 +1,9 @@
 # --- Stage 1: Build the Spring Boot Application ---
-FROM maven:3.9.6-eclipse-temurin-17-jammy AS build
+FROM maven:3.9.6-eclipse-temurin-17 AS build
 WORKDIR /app
 
 # Copy the build configuration files
 COPY pom.xml .
-# (Optional) Pre-download dependencies to speed up future builds
 RUN mvn dependency:go-offline -B
 
 # Copy source code and build the application jar

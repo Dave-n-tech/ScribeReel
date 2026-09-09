@@ -1,9 +1,10 @@
-// ConversionController.java
 package org.scribereel.controllers;
 
-import org.scribereel.dtos.response.CaptionResponse;
-import org.scribereel.services.FfmpegService;
+import org.scribereel.config.AppPropertiesConfig;
+import org.scribereel.dtos.response.JobAcceptedResponse;
+import org.scribereel.services.ConvertProcessingService;
 import org.scribereel.services.JobFileService;
+import org.scribereel.services.JobRegistryService;
 import org.scribereel.services.VideoValidationService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -17,29 +18,36 @@ import java.nio.file.Path;
 public class ConversionController {
 
     private final VideoValidationService videoValidationService;
-    private final FfmpegService ffmpegService;
     private final JobFileService jobFileService;
+    private final ConvertProcessingService convertProcessingService;
+    private final JobRegistryService jobRegistryService;
+    private final AppPropertiesConfig appProperties;
 
     public ConversionController(VideoValidationService videoValidationService,
-                                FfmpegService ffmpegService,
-                                JobFileService jobFileService) {
+                                JobFileService jobFileService,
+                                ConvertProcessingService convertProcessingService,
+                                JobRegistryService jobRegistryService,
+                                AppPropertiesConfig appProperties) {
         this.videoValidationService = videoValidationService;
-        this.ffmpegService = ffmpegService;
         this.jobFileService = jobFileService;
+        this.convertProcessingService = convertProcessingService;
+        this.jobRegistryService = jobRegistryService;
+        this.appProperties = appProperties;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CaptionResponse> convertToMp3(@RequestParam("video") MultipartFile video) {
+    public ResponseEntity<JobAcceptedResponse> convertToMp3(@RequestParam("video") MultipartFile video) {
         videoValidationService.validate(video);
 
         JobFileService.JobContext job = jobFileService.createJob();
         Path inputVideoPath = jobFileService.saveUpload(video, job.jobDir());
 
-        videoValidationService.validateDuration(inputVideoPath);
+        videoValidationService.validateDuration(inputVideoPath, appProperties.getMaxDurationSecondsConvert());
 
-        Path resultAudioPath = job.jobDir().resolve("result.mp3");
-        ffmpegService.extractAudio(inputVideoPath, resultAudioPath);
+        jobRegistryService.createPending(job.jobId());
+        convertProcessingService.process(job.jobId(), job.jobDir(), inputVideoPath);
 
-        return ResponseEntity.ok(new CaptionResponse("/api/download/" + job.jobId()));
+        return ResponseEntity.accepted()
+                .body(new JobAcceptedResponse(job.jobId(), "/api/jobs/" + job.jobId()));
     }
 }

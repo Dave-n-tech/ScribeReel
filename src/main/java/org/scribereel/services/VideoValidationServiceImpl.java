@@ -34,12 +34,12 @@ public class VideoValidationServiceImpl implements VideoValidationService {
     }
 
     @Override
-    public void validateDuration(Path mediaPath) {
+    public void validateDuration(Path mediaPath, int maxDurationSeconds) {
         double durationSeconds = ffmpegService.probeDurationSeconds(mediaPath);
-        if (durationSeconds > appProperties.getMaxDurationSeconds()) {
+        if (durationSeconds > maxDurationSeconds) {
             throw new VideoValidationException(
                     "Media is " + Math.round(durationSeconds) + "s - max allowed is "
-                            + appProperties.getMaxDurationSeconds() + "s.");
+                            + maxDurationSeconds + "s.");
         }
     }
 

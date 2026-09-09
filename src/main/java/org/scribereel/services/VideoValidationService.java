@@ -7,6 +7,6 @@ import java.nio.file.Path;
 public interface VideoValidationService {
     void validate(MultipartFile video);
     void validateMedia(MultipartFile file);
-    void validateDuration(Path videoPath);
+    void validateDuration(Path videoPath, int maxDurationSeconds);
     boolean isAudioFile(String filename);
 }

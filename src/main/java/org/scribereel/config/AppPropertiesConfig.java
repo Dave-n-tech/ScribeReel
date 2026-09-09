@@ -12,7 +12,9 @@ import java.nio.file.Path;
 @Component
 @ConfigurationProperties(prefix = "scribereel")
 public class AppPropertiesConfig {
-    private int maxDurationSeconds = 60;
+    private int maxDurationSecondsCaption = 180;
+    private int maxDurationSecondsConvert = 180;
+    private int maxDurationSecondsTranscribe = 1800;
     private int maxFileSize = 100;
     private int rateLimitWindowMinutes = 2;
     private int tempFileTtlMinutes = 15;

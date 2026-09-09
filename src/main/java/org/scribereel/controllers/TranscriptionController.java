@@ -1,10 +1,11 @@
 package org.scribereel.controllers;
 
-import org.scribereel.dtos.response.TranscriptionResponse;
-import org.scribereel.services.FfmpegService;
+import org.scribereel.dtos.response.JobAcceptedResponse;
 import org.scribereel.services.JobFileService;
-import org.scribereel.services.TranscriptionService;
+import org.scribereel.services.JobRegistryService;
+import org.scribereel.services.TranscriptionProcessingService;
 import org.scribereel.services.VideoValidationService;
+import org.scribereel.config.AppPropertiesConfig;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,42 +18,36 @@ import java.nio.file.Path;
 public class TranscriptionController {
 
     private final VideoValidationService videoValidationService;
-    private final FfmpegService ffmpegService;
-    private final TranscriptionService transcriptionService;
     private final JobFileService jobFileService;
+    private final TranscriptionProcessingService transcriptionProcessingService;
+    private final JobRegistryService jobRegistryService;
+    private final AppPropertiesConfig appProperties;
 
     public TranscriptionController(VideoValidationService videoValidationService,
-                                   FfmpegService ffmpegService,
-                                   TranscriptionService transcriptionService,
-                                   JobFileService jobFileService) {
+                                   JobFileService jobFileService,
+                                   TranscriptionProcessingService transcriptionProcessingService,
+                                   JobRegistryService jobRegistryService,
+                                   AppPropertiesConfig appProperties) {
         this.videoValidationService = videoValidationService;
-        this.ffmpegService = ffmpegService;
-        this.transcriptionService = transcriptionService;
         this.jobFileService = jobFileService;
+        this.transcriptionProcessingService = transcriptionProcessingService;
+        this.jobRegistryService = jobRegistryService;
+        this.appProperties = appProperties;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<TranscriptionResponse> transcribe(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<JobAcceptedResponse> transcribe(@RequestParam("file") MultipartFile file) {
         videoValidationService.validateMedia(file);
 
         JobFileService.JobContext job = jobFileService.createJob();
         Path inputPath = jobFileService.saveUpload(file, job.jobDir());
 
-        videoValidationService.validateDuration(inputPath);
+        videoValidationService.validateDuration(inputPath, appProperties.getMaxDurationSecondsTranscribe());
 
-        Path audioPath;
-        if (videoValidationService.isAudioFile(file.getOriginalFilename())) {
-            // Already audio - no extraction needed, transcribe the upload directly.
-            audioPath = inputPath;
-        } else {
-            audioPath = job.jobDir().resolve("audio.mp3");
-            ffmpegService.extractAudio(inputPath, audioPath);
-        }
+        jobRegistryService.createPending(job.jobId());
+        transcriptionProcessingService.process(job.jobId(), job.jobDir(), inputPath);
 
-        String text = transcriptionService.transcribeText(audioPath);
-
-        // No downloadable deliverable - text returned directly. CleanupService
-        // still sweeps the job dir on its normal schedule.
-        return ResponseEntity.ok(new TranscriptionResponse(text));
+        return ResponseEntity.accepted()
+                .body(new JobAcceptedResponse(job.jobId(), "/api/jobs/" + job.jobId()));
     }
 }

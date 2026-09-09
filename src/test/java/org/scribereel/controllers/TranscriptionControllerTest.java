@@ -1,9 +1,10 @@
 package org.scribereel.controllers;
 
 import org.junit.jupiter.api.Test;
-import org.scribereel.services.FfmpegService;
+import org.scribereel.exceptions.VideoValidationException;
 import org.scribereel.services.JobFileService;
-import org.scribereel.services.TranscriptionService;
+import org.scribereel.services.JobRegistryService;
+import org.scribereel.services.TranscriptionProcessingService;
 import org.scribereel.services.VideoValidationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -21,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(TranscriptionController.class)
-class TranscriptionControllerTest extends BaseControllerTest{
+class TranscriptionControllerTest extends BaseControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -30,54 +31,83 @@ class TranscriptionControllerTest extends BaseControllerTest{
     private VideoValidationService videoValidationService;
 
     @MockBean
-    private FfmpegService ffmpegService;
-
-    @MockBean
-    private TranscriptionService transcriptionService;
-
-    @MockBean
     private JobFileService jobFileService;
 
+    @MockBean
+    private TranscriptionProcessingService transcriptionProcessingService;
+
+    @MockBean
+    private JobRegistryService jobRegistryService;
+
     @Test
-    void transcribe_extractsAudioFirst_whenInputIsVideo() throws Exception {
+    void transcribe_passesConfiguredTranscribeDurationLimitToValidation() throws Exception {
         Path jobDir = Path.of(System.getProperty("java.io.tmpdir"), "fake-job");
         JobFileService.JobContext context = new JobFileService.JobContext("fake-job-id", jobDir);
         Path inputPath = jobDir.resolve("input.mp4");
 
         when(jobFileService.createJob()).thenReturn(context);
         when(jobFileService.saveUpload(any(), any())).thenReturn(inputPath);
-        when(videoValidationService.isAudioFile("clip.mp4")).thenReturn(false);
-        when(transcriptionService.transcribeText(any())).thenReturn("Hello world");
+        when(appProperties.getMaxDurationSecondsTranscribe()).thenReturn(1800);
 
         MockMultipartFile video = new MockMultipartFile("file", "clip.mp4", "video/mp4", "bytes".getBytes());
 
         mockMvc.perform(multipart("/api/transcribe").file(video))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.text").value("Hello world"));
+                .andExpect(status().isAccepted());
 
-        // Confirms extraction actually happened for a video input.
-        verify(ffmpegService, times(1)).extractAudio(eq(inputPath), any());
+        verify(videoValidationService, times(1)).validateDuration(inputPath, 1800);
     }
 
     @Test
-    void transcribe_skipsExtraction_whenInputIsAlreadyAudio() throws Exception {
+    void transcribe_returns202WithJobIdOnAccept() throws Exception {
         Path jobDir = Path.of(System.getProperty("java.io.tmpdir"), "fake-job");
         JobFileService.JobContext context = new JobFileService.JobContext("fake-job-id", jobDir);
-        Path inputPath = jobDir.resolve("input.mp3");
+        Path inputPath = jobDir.resolve("input.mp4");
 
         when(jobFileService.createJob()).thenReturn(context);
         when(jobFileService.saveUpload(any(), any())).thenReturn(inputPath);
-        when(videoValidationService.isAudioFile("clip.mp3")).thenReturn(true);
-        when(transcriptionService.transcribeText(any())).thenReturn("Hello from audio");
 
-        MockMultipartFile audio = new MockMultipartFile("file", "clip.mp3", "audio/mpeg", "bytes".getBytes());
+        MockMultipartFile video = new MockMultipartFile("file", "clip.mp4", "video/mp4", "bytes".getBytes());
 
-        mockMvc.perform(multipart("/api/transcribe").file(audio))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.text").value("Hello from audio"));
+        mockMvc.perform(multipart("/api/transcribe").file(video))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("fake-job-id"))
+                .andExpect(jsonPath("$.statusUrl").value("/api/jobs/fake-job-id"));
 
-        // The key assertion: extraction must NOT run for an already-audio input.
-        verify(ffmpegService, never()).extractAudio(any(), any());
-        verify(transcriptionService, times(1)).transcribeText(inputPath);
+        verify(jobRegistryService, times(1)).createPending("fake-job-id");
+        verify(transcriptionProcessingService, times(1))
+                .process(eq("fake-job-id"), eq(jobDir), eq(inputPath));
+    }
+
+    @Test
+    void transcribe_validatesBeforeAcceptingJob() throws Exception {
+        doThrow(new VideoValidationException("Only video (.mp4, .mov) or audio (.mp3, .wav, .m4a, .aac) files are supported."))
+                .when(videoValidationService).validateMedia(any());
+
+        MockMultipartFile file = new MockMultipartFile("file", "clip.ogg", "audio/ogg", "bytes".getBytes());
+
+        mockMvc.perform(multipart("/api/transcribe").file(file))
+                .andExpect(status().isBadRequest());
+
+        verify(jobRegistryService, never()).createPending(any());
+        verify(transcriptionProcessingService, never()).process(any(), any(), any());
+    }
+
+    @Test
+    void transcribe_enforcesTranscriptionDurationLimit() throws Exception {
+        Path jobDir = Path.of(System.getProperty("java.io.tmpdir"), "fake-job");
+        JobFileService.JobContext context = new JobFileService.JobContext("fake-job-id", jobDir);
+        Path inputPath = jobDir.resolve("input.mp4");
+
+        when(jobFileService.createJob()).thenReturn(context);
+        when(jobFileService.saveUpload(any(), any())).thenReturn(inputPath);
+        doThrow(new VideoValidationException("Media is 2000s - max allowed is 1800s."))
+                .when(videoValidationService).validateDuration(eq(inputPath), anyInt());
+
+        MockMultipartFile video = new MockMultipartFile("file", "clip.mp4", "video/mp4", "bytes".getBytes());
+
+        mockMvc.perform(multipart("/api/transcribe").file(video))
+                .andExpect(status().isBadRequest());
+
+        verify(transcriptionProcessingService, never()).process(any(), any(), any());
     }
 }

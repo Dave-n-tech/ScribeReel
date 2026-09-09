@@ -15,5 +15,8 @@ abstract class BaseControllerTest {
         when(appProperties.getRateLimitMaxRequests()).thenReturn(1000);
         when(appProperties.getRateLimitMaxRequestsConvert()).thenReturn(1000);
         when(appProperties.getRateLimitWindowMinutes()).thenReturn(2);
+        when(appProperties.getMaxDurationSecondsCaption()).thenReturn(180);
+        when(appProperties.getMaxDurationSecondsConvert()).thenReturn(180);
+        when(appProperties.getMaxDurationSecondsTranscribe()).thenReturn(1800);
     }
 }

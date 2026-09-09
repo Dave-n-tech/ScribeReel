@@ -41,26 +41,68 @@ class CaptionControllerTest extends BaseControllerTest{
     @MockBean
     private JobFileService jobFileService;
 
+    @MockBean
+    private CaptionProcessingService captionProcessingService;
+    @MockBean
+    private JobRegistryService jobRegistryService;
+
     @Test
-    void createVideoCaption_returnsDownloadUrlOnSuccess() throws Exception {
+    void createVideoCaption_passesConfiguredCaptionDurationLimitToValidation() throws Exception {
         Path jobDir = Path.of(System.getProperty("java.io.tmpdir"), "fake-job");
         JobFileService.JobContext context = new JobFileService.JobContext("fake-job-id", jobDir);
         Path inputPath = jobDir.resolve("input.mp4");
 
         when(jobFileService.createJob()).thenReturn(context);
         when(jobFileService.saveUpload(any(), any())).thenReturn(inputPath);
-        when(transcriptionService.transcribe(any()))
-                .thenReturn(List.of(new TranscriptWord("hello", 0.0, 0.5)));
+        when(appProperties.getMaxDurationSecondsCaption()).thenReturn(180);
 
         MockMultipartFile video = new MockMultipartFile("video", "clip.mp4", "video/mp4", "bytes".getBytes());
 
         mockMvc.perform(multipart("/api/caption").file(video))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.downloadUrl").value("/api/download/fake-job-id"));
+                .andExpect(status().isAccepted());
 
-        verify(ffmpegService, times(1)).extractAudio(any(), any());
-        verify(subtitleGeneratorService, times(1)).generate(any(), any(), eq(CaptionStyle.PUNCH)); // default style
-        verify(ffmpegService, times(1)).burnSubtitles(any(), any(), any());
+        // The real point of this test: confirms CaptionController reads its OWN
+        // duration limit, not one copy-pasted from Convert or Transcribe.
+        verify(videoValidationService, times(1)).validateDuration(inputPath, 180);
+    }
+
+    @Test
+    void createVideoCaption_returns202WithJobIdOnAccept() throws Exception {
+        Path jobDir = Path.of(System.getProperty("java.io.tmpdir"), "fake-job");
+        JobFileService.JobContext context = new JobFileService.JobContext("fake-job-id", jobDir);
+        Path inputPath = jobDir.resolve("input.mp4");
+
+        when(jobFileService.createJob()).thenReturn(context);
+        when(jobFileService.saveUpload(any(), any())).thenReturn(inputPath);
+
+        MockMultipartFile video = new MockMultipartFile("video", "clip.mp4", "video/mp4", "bytes".getBytes());
+
+        mockMvc.perform(multipart("/api/caption").file(video))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("fake-job-id"))
+                .andExpect(jsonPath("$.statusUrl").value("/api/jobs/fake-job-id"));
+
+        // Confirms the job was registered before processing kicked off,
+        // and that processing was actually dispatched (not skipped).
+        verify(jobRegistryService, times(1)).createPending("fake-job-id");
+        verify(captionProcessingService, times(1))
+                .process(eq("fake-job-id"), eq(jobDir), eq(inputPath), eq(CaptionStyle.PUNCH));
+    }
+
+    @Test
+    void createVideoCaption_validatesBeforeAcceptingJob() throws Exception {
+        doThrow(new VideoValidationException("Only .mp4 and .mov files are supported."))
+                .when(videoValidationService).validate(any());
+
+        MockMultipartFile file = new MockMultipartFile("video", "clip.avi", "video/avi", "bytes".getBytes());
+
+        mockMvc.perform(multipart("/api/caption").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Only .mp4 and .mov files are supported."));
+
+        // Nothing should have been dispatched - validation failure short-circuits everything
+        verify(jobRegistryService, never()).createPending(any());
+        verify(captionProcessingService, never()).process(any(), any(), any(), any());
     }
 
     @Test
@@ -71,17 +113,17 @@ class CaptionControllerTest extends BaseControllerTest{
 
         when(jobFileService.createJob()).thenReturn(context);
         when(jobFileService.saveUpload(any(), any())).thenReturn(inputPath);
-        when(transcriptionService.transcribe(any()))
-                .thenReturn(List.of(new TranscriptWord("hello", 0.0, 0.5)));
 
         MockMultipartFile video = new MockMultipartFile("video", "clip.mp4", "video/mp4", "bytes".getBytes());
 
         mockMvc.perform(multipart("/api/caption")
                         .file(video)
                         .param("style", "NEON"))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("fake-job-id"));
 
-        verify(subtitleGeneratorService, times(1)).generate(any(), any(), eq(CaptionStyle.NEON));
+        verify(captionProcessingService, times(1))
+                .process(eq("fake-job-id"), eq(jobDir), eq(inputPath), eq(CaptionStyle.NEON));
     }
 
     @Test
@@ -104,15 +146,15 @@ class CaptionControllerTest extends BaseControllerTest{
 
         when(jobFileService.createJob()).thenReturn(context);
         when(jobFileService.saveUpload(any(), any())).thenReturn(inputPath);
-        when(transcriptionService.transcribe(any()))
-                .thenReturn(List.of(new TranscriptWord("hello", 0.0, 0.5)));
 
         MockMultipartFile video = new MockMultipartFile("video", "clip.mp4", "video/mp4", "bytes".getBytes());
 
         mockMvc.perform(multipart("/api/caption").file(video).param("style", "neon"))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("fake-job-id"));
 
-        verify(subtitleGeneratorService, times(1)).generate(any(), any(), eq(CaptionStyle.NEON));
+        verify(captionProcessingService, times(1))
+                .process(eq("fake-job-id"), eq(jobDir), eq(inputPath), eq(CaptionStyle.NEON));
     }
 
     @Test
@@ -121,5 +163,7 @@ class CaptionControllerTest extends BaseControllerTest{
 
         mockMvc.perform(multipart("/api/caption").file(video).param("style", "not-a-real-style"))
                 .andExpect(status().isBadRequest());
+
+        verify(captionProcessingService, never()).process(any(), any(), any(), any());
     }
 }

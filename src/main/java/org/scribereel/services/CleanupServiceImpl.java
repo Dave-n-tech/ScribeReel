@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
@@ -21,9 +22,11 @@ public class CleanupServiceImpl implements CleanupService {
     private static final Logger log = LoggerFactory.getLogger(CleanupServiceImpl.class);
 
     private final AppPropertiesConfig appProperties;
+    private final JobRegistryService jobRegistryService;
 
-    public CleanupServiceImpl(AppPropertiesConfig appProperties) {
+    public CleanupServiceImpl(AppPropertiesConfig appProperties,  JobRegistryService jobRegistryService) {
         this.appProperties = appProperties;
+        this.jobRegistryService = jobRegistryService;
     }
 
     @Override
@@ -41,6 +44,8 @@ public class CleanupServiceImpl implements CleanupService {
         } catch (IOException e) {
             log.warn("Cleanup sweep failed to list temp dir", e);
         }
+
+        jobRegistryService.purgeOlderThan(Duration.ofMinutes(appProperties.getTempFileTtlMinutes()));
     }
 
     private boolean isOlderThan(Path dir, Instant cutoff) {

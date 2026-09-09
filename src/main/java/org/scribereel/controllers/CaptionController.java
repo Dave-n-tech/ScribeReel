@@ -1,7 +1,7 @@
 package org.scribereel.controllers;
 
-import org.scribereel.dtos.internal.TranscriptWord;
-import org.scribereel.dtos.response.CaptionResponse;
+import org.scribereel.config.AppPropertiesConfig;
+import org.scribereel.dtos.response.JobAcceptedResponse;
 import org.scribereel.enums.CaptionStyle;
 import org.scribereel.services.*;
 import org.slf4j.Logger;
@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Path;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/caption")
@@ -21,27 +20,27 @@ public class CaptionController {
     private static final Logger log = LoggerFactory.getLogger(CaptionController.class);
 
     private final VideoValidationService videoValidationService;
-    private final FfmpegService ffmpegService;
-    private final TranscriptionService transcriptionService;
-    private final SubtitleGeneratorService subtitleGeneratorService;
     private final JobFileService jobFileService;
+    private final AppPropertiesConfig appProperties;
+    private final JobRegistryService jobRegistryService;
+    private final CaptionProcessingService captionProcessingService;
 
     public CaptionController(
             VideoValidationService videoValidationService,
-            FfmpegService ffmpegService,
-            TranscriptionService transcriptionService,
-            SubtitleGeneratorService subtitleGeneratorService,
-            JobFileService jobFileService
+            JobFileService jobFileService,
+            AppPropertiesConfig appProperties,
+            JobRegistryService jobRegistryService,
+            CaptionProcessingService captionProcessingService
     ){
         this.videoValidationService = videoValidationService;
-        this.ffmpegService = ffmpegService;
-        this.transcriptionService = transcriptionService;
-        this.subtitleGeneratorService = subtitleGeneratorService;
         this.jobFileService = jobFileService;
+        this.appProperties = appProperties;
+        this.jobRegistryService = jobRegistryService;
+        this.captionProcessingService = captionProcessingService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CaptionResponse> createVideoCaption (
+    public ResponseEntity<JobAcceptedResponse> createVideoCaption (
             @RequestParam("video") MultipartFile video,
             @RequestParam(value = "style", defaultValue = "PUNCH") String styleId
             ) {
@@ -59,17 +58,12 @@ public class CaptionController {
         JobFileService.JobContext job = jobFileService.createJob();
         Path inputVideoPath = jobFileService.saveUpload(video, job.jobDir());
 
-        videoValidationService.validateDuration(inputVideoPath);
+        videoValidationService.validateDuration(inputVideoPath, appProperties.getMaxDurationSecondsCaption());
 
-        Path audioPath = job.jobDir().resolve("audio.mp3");
-        Path assPath = job.jobDir().resolve("captions.ass");
-        Path outputVideoPath = job.jobDir().resolve("result.mp4");
+        jobRegistryService.createPending(job.jobId());
+        captionProcessingService.process(job.jobId(), job.jobDir(), inputVideoPath, style);
 
-        ffmpegService.extractAudio(inputVideoPath, audioPath);
-        List<TranscriptWord> words = transcriptionService.transcribe(audioPath);
-        subtitleGeneratorService.generate(words, assPath, style);
-        ffmpegService.burnSubtitles(inputVideoPath, assPath, outputVideoPath);
-
-        return ResponseEntity.ok(new CaptionResponse("/api/download/" + job.jobId()));
+        return ResponseEntity.accepted()
+                .body(new JobAcceptedResponse(job.jobId(), "/api/jobs/" + job.jobId()));
     }
 }

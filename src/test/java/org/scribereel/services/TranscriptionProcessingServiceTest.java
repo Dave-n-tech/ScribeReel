@@ -38,7 +38,7 @@ class TranscriptionProcessingServiceTest {
 
         service.process("job-1", jobDir, inputPath);
 
-        verify(ffmpegService, times(1)).extractAudio(eq(inputPath), any());
+        verify(ffmpegService, times(1)).extractAudioForTranscription(eq(inputPath), any());
         verify(jobRegistryService).markDoneWithText("job-1", "Hello world");
         verify(jobRegistryService, never()).markFailed(any(), any());
     }
@@ -83,7 +83,7 @@ class TranscriptionProcessingServiceTest {
 
         when(videoValidationService.isAudioFile("input.mp4")).thenReturn(false);
         doThrow(new VideoProcessingException("extraction failed"))
-                .when(ffmpegService).extractAudio(any(), any());
+                .when(ffmpegService).extractAudioForTranscription(any(), any());
 
         service.process("job-1", jobDir, inputPath);
 

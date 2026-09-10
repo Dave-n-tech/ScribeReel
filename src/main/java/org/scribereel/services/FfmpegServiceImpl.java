@@ -36,6 +36,24 @@ public class FfmpegServiceImpl implements FfmpegService {
     }
 
     @Override
+    public void extractAudioForTranscription(Path inputVideoPath, Path audioPath) {
+        // 16kHz mono, 32kbps - Whisper downsamples to 16kHz internally regardless,
+        // so this loses no transcription accuracy while keeping file size well
+        // under Groq's 25MB cap even for long audio (~14MB for a full hour).
+        List<String> command = List.of(
+                "ffmpeg", "-y",
+                "-i", inputVideoPath.toString(),
+                "-vn",
+                "-ar", "16000",
+                "-ac", "1",
+                "-b:a", "32k",
+                "-acodec", "libmp3lame",
+                audioPath.toString()
+        );
+        run(command, "audio extraction for transcription", null);
+    }
+
+    @Override
     public void burnSubtitles(Path inputVideoPath, Path assPath, Path outputVideoPath) {
         Path jobDir = assPath.getParent();
         String assFilename = assPath.getFileName().toString();

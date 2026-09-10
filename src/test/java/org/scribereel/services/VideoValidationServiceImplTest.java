@@ -34,7 +34,7 @@ class VideoValidationServiceImplTest {
 
         assertThat(realProps.getMaxDurationSecondsCaption()).isEqualTo(180);
         assertThat(realProps.getMaxDurationSecondsConvert()).isEqualTo(180);
-        assertThat(realProps.getMaxDurationSecondsTranscribe()).isEqualTo(1800);
+        assertThat(realProps.getMaxDurationSecondsTranscribe()).isEqualTo(3600);
     }
 
     @Test

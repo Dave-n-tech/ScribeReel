@@ -14,11 +14,11 @@ import java.nio.file.Path;
 public class AppPropertiesConfig {
     private int maxDurationSecondsCaption = 180;
     private int maxDurationSecondsConvert = 180;
-    private int maxDurationSecondsTranscribe = 1800;
-    private int maxFileSize = 100;
+    private int maxDurationSecondsTranscribe = 3600;
+    private int maxFileSize = 250;
     private int rateLimitWindowMinutes = 2;
     private int tempFileTtlMinutes = 15;
-    private int ffmpegTimeoutMinutes = 5;
+    private int ffmpegTimeoutMinutes = 10;
     private int rateLimitMaxRequests = 1;
     private int rateLimitMaxRequestsConvert = 5;
 

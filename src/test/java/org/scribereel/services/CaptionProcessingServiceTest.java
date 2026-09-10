@@ -44,7 +44,7 @@ class CaptionProcessingServiceTest {
         var inOrder = inOrder(jobRegistryService, ffmpegService, transcriptionService,
                 subtitleGeneratorService);
         inOrder.verify(jobRegistryService).markProcessing("job-1");
-        inOrder.verify(ffmpegService).extractAudio(eq(inputPath), any());
+        inOrder.verify(ffmpegService).extractAudioForTranscription(eq(inputPath), any());
         inOrder.verify(transcriptionService).transcribe(any());
         inOrder.verify(subtitleGeneratorService).generate(any(), any(), eq(CaptionStyle.PUNCH));
         inOrder.verify(ffmpegService).burnSubtitles(eq(inputPath), any(), any());
@@ -60,11 +60,8 @@ class CaptionProcessingServiceTest {
         Path inputPath = jobDir.resolve("input.mp4");
 
         doThrow(new VideoProcessingException("audio extraction failed"))
-                .when(ffmpegService).extractAudio(any(), any());
+                .when(ffmpegService).extractAudioForTranscription(any(), any()); // <- changed
 
-        // Should not throw - the whole point of @Async processing is that
-        // failures get captured in the registry, not thrown into the void
-        // on a background thread where nothing could catch them anyway.
         service.process("job-1", jobDir, inputPath, CaptionStyle.PUNCH);
 
         verify(jobRegistryService).markFailed(eq("job-1"), any());

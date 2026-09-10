@@ -38,7 +38,7 @@ public class CaptionProcessingService {
             Path assPath = jobDir.resolve("captions.ass");
             Path outputVideoPath = jobDir.resolve("result.mp4");
 
-            ffmpegService.extractAudio(inputVideoPath, audioPath);
+            ffmpegService.extractAudioForTranscription(inputVideoPath, audioPath);
             List<TranscriptWord> words = transcriptionService.transcribe(audioPath);
             subtitleGeneratorService.generate(words, assPath, style);
             ffmpegService.burnSubtitles(inputVideoPath, assPath, outputVideoPath);

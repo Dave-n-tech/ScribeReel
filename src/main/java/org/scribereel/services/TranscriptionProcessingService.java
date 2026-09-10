@@ -36,7 +36,7 @@ public class TranscriptionProcessingService {
                 audioPath = inputPath;
             } else {
                 audioPath = jobDir.resolve("audio.mp3");
-                ffmpegService.extractAudio(inputPath, audioPath);
+                ffmpegService.extractAudioForTranscription(inputPath, audioPath);
             }
 
             String text = transcriptionService.transcribeText(audioPath);
